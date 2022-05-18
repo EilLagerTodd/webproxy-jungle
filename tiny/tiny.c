@@ -16,6 +16,8 @@ void get_filetype(char *filename, char *filetype);
 void serve_dynamic(int fd, char *filename, char *cgiargs);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
                  char *longmsg);
+// void echo(int connfd); // 11.6 A
+void sigchild_handler(int sig);
 
 int main(int argc, char **argv) {
   int listenfd, connfd;
@@ -28,6 +30,9 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  if (Signal(SIGCHLD, sigchild_handler) == SIG_ERR)
+    unix_error("signal child handler error"); // 11.8
+
   listenfd = Open_listenfd(argv[1]);
   while (1) {
     clientlen = sizeof(clientaddr);
@@ -36,7 +41,29 @@ int main(int argc, char **argv) {
                 0);
     printf("Accepted connection from (%s, %s)\n", hostname, port);
     doit(connfd);
+    // echo(connfd); // 11.6 - A
     Close(connfd);
+  }
+}
+
+void sigchild_handler(int sig) {
+  int old_errno = errno;
+  int status;
+  pid_t pid;
+  while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+  }
+  errno = old_errno;
+} // 11.8
+
+void echo(int connfd) {
+  size_t n;
+  char buf[MAXLINE];
+  rio_t rio;
+
+  Rio_readinitb(&rio, connfd);
+  while ((n = Rio_readlineb(&rio, buf, MAXLINE)) != 0) {
+    if (strcmp(buf, "\r\n") == 0) break;
+    Rio_writen(connfd, buf, n);
   }
 }
 
@@ -183,6 +210,10 @@ void get_filetype(char *filename, char *filetype) {
     strcpy(filetype, "image/jpeg");
   else if (strstr(filename, ".mpg"))
     strcpy(filetype, "image/mpeg");
+  else if (strstr(filename, ".mpeg"))
+    strcpy(filetype, "video/mpeg");
+  else if (strstr(filename, ".mp4"))
+    strcpy(filetype, "video/mp4");
   else
     strcpy(filetype, "text/plain");
 }
